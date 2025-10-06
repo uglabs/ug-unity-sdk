@@ -1,0 +1,18 @@
+{
+    "name": "uglabs.unity.sdk.Runtime",
+    "rootNamespace": "",
+    "references": [
+        "GUID:9e43dcad8cc9d487c845bfbc2b4c68e1",
+        "GUID:8600c83db57f44fe2aa05f4cf22420bf",
+        "GUID:04376767bc1f3b428aefa3d20743e819"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

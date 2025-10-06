@@ -1,0 +1,18 @@
+{
+    "name": "uglabs.unity.sdk.Editor",
+    "rootNamespace": "",
+    "references": [
+        "GUID:6b622aadbe6504f8495ffcad70757562"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,28 @@
+{
+  "name": "io.uglabs.unity.sdk",
+  "displayName": "UGSDK",
+  "version": "3.0.0",
+  "unity": "6000.1",
+  "author": "UG Labs",
+  "description": "UG SDK for developing Unity based projects and communicating with UG servers",
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.2.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/uglabs/ug-unity-sdk"
+  },
+  "samples": [
+    {
+      "displayName": "Basic usage",
+      "description": "Basic example - initialize and start a voice interaction",
+      "path": "Runtime/Examples~/Basic"
+    },
+    {
+      "displayName": "Advanced - utilities",
+      "description": "Advanced example - use utilities to classify user input",
+      "path": "Runtime/Examples~/AdvancedUtilities"
+    }
+  ],
+  "hideInEditor": false
+}
