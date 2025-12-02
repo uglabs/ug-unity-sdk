@@ -15,6 +15,12 @@ namespace UG.Editor.Settings
             GetWindow<SettingsWindow>("UG Labs Settings");
         }
 
+        [MenuItem("Tools/UG Labs/UG Studio")]
+        public static void ShowUGStudio()
+        {
+            Application.OpenURL("https://pug-playground.stg.uglabs.app/");
+        }
+
         private void OnGUI()
         {
             OnGUISettings();

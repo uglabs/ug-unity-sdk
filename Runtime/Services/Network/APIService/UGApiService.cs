@@ -6,7 +6,7 @@ using UG.Services.Network.APIService.Endpoints;
 
 namespace UG.Services.UGApiService
 {
-    public class UGApiServiceV3
+    public class UGApiService
     {
         private readonly IHttpService _httpService;
         private readonly Settings.UGSDKSettings _settings;
@@ -16,7 +16,7 @@ namespace UG.Services.UGApiService
         private readonly HealthEndpoint _healthEndpoint;
         #endregion
 
-        public UGApiServiceV3(Settings.UGSDKSettings settings, IHttpService httpService)
+        public UGApiService(Settings.UGSDKSettings settings, IHttpService httpService)
         {
             _httpService = httpService;
             _settings = settings;

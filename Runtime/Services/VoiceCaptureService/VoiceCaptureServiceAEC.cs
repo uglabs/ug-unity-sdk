@@ -22,24 +22,30 @@ namespace UG.Services
         private List<float> _sampleBuffer = new();
         private List<float> _recordingSamples = new();
         private DateTime _recordingStartTime;
-        public Action OnSpoke;
-        public Action OnSilenced;
-        public Action OnTimeout;
-        public Action OnHardTimeout;
-        public Action OnRecordingTooLong;
-        public Action<DateTime, DateTime> OnVADClosingTime;
+
+        #region Events
+        public event Action OnSpoke;
+        public event Action OnSilenced;
+        public event Action OnTimeout;
+        public event Action OnHardTimeout;
+        public event Action OnRecordingTooLong;
+        public event Action<DateTime, DateTime> OnVADClosingTime;
+        #endregion
+
         private int _targetSampleRate = 16000;
         private int _sourceSampleRate = 0;
         private bool isGotFirstMicSample = false;
         private readonly object _audioLock = new object();
         private bool _isProcessing = false;
         private int WEBRTC_FRAME_SIZE = 160;
-        private int STREAM_DELAY_MS = 30;
+        private int STREAM_DELAY_MS = 0;
 
+        #region Runtime audio data
         private List<float> vadBuffer = new List<float>(); // Buffer for VAD (needs 512 samples)
         private List<float> processedAECSamples = new List<float>();
         private List<float> sourceMicSamples = new List<float>();
         private List<float> sourceSpeakerSamples = new List<float>();
+        #endregion
 
         public VoiceCaptureState State { get; private set; } = VoiceCaptureState.Idle;
         public enum VoiceCaptureState
@@ -164,7 +170,7 @@ namespace UG.Services
             int initResult = UGLibInterface.InitWebRTC();
             if (initResult == 0)
             {
-               UGLog.Log("[CleanRealtimeTest] WebRTC initialization successful");
+                UGLog.Log("[CleanRealtimeTest] WebRTC initialization successful");
                 UGLog.Log($"[CleanRealtimeTest] WebRTC minor version: {UGLibInterface.GetTestMinorVersion()}");
             }
             else
@@ -179,7 +185,7 @@ namespace UG.Services
             UGLibInterface.SetGainController2(true);
             UGLibInterface.SetHighPassFilter(true);
             UGLibInterface.SetPreGainFactor(1.4f);
-             // UGLibInterface.SetNoiseSuppression(true, 0);
+            // UGLibInterface.SetNoiseSuppression(true, 0);
         }
 
         public void OnMicrophoneSamplesReceived(float[] samples)

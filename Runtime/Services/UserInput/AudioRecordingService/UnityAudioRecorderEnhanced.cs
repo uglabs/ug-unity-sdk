@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UG.Utils;
+using System.Threading.Tasks;
 
 namespace UG.Services.UserInput.AudioRecordingService
 {
@@ -616,7 +618,7 @@ namespace UG.Services.UserInput.AudioRecordingService
         
         // Continuous audio reading (similar to AudioRecordingServiceAEC)
         
-        private async Awaitable ReadSamplesContinuouslyAsync(System.Threading.CancellationToken cancellationToken)
+        private async Task ReadSamplesContinuouslyAsync(System.Threading.CancellationToken cancellationToken)
         {
             while (!cancellationToken.IsCancellationRequested && IsRecording)
             {
@@ -663,7 +665,7 @@ namespace UG.Services.UserInput.AudioRecordingService
                     // If no new data available, wait before next check
                     if (!hasRawData && !hasEnhancedData)
                     {
-                        await Awaitable.NextFrameAsync();
+                        await UG.Utils.Awaitable.NextFrameAsync();
                         continue;
                     }
                     
@@ -671,14 +673,14 @@ namespace UG.Services.UserInput.AudioRecordingService
                     // Unity Editor mode - read from Unity microphone
                     if (string.IsNullOrEmpty(selectedDevice) || microphoneClip == null)
                     {
-                        await Awaitable.NextFrameAsync();
+                        await UG.Utils.Awaitable.NextFrameAsync();
                         continue;
                     }
 
                     int currentPosition = Microphone.GetPosition(selectedDevice);
                     if (currentPosition < 0 || lastSample == currentPosition)
                     {
-                        await Awaitable.NextFrameAsync();
+                        await UG.Utils.Awaitable.NextFrameAsync();
                         continue;
                     }
 
@@ -707,7 +709,7 @@ namespace UG.Services.UserInput.AudioRecordingService
                     LogError($"Error reading samples: {e.Message}");
                 }
                 
-                await Awaitable.NextFrameAsync();
+                await UG.Utils.Awaitable.NextFrameAsync();
             }
         }
         

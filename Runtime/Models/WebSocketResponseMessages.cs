@@ -299,4 +299,15 @@ namespace UG.Models.WebSocketResponseMessages
         }
     }
 
+    public class GenerateImageResponse : WebSocketResponseMessage
+    {
+        [JsonProperty("image")]
+        public string Image { get; set; }
+
+        public GenerateImageResponse()
+        {
+            Kind = "generate_image";
+        }
+    }
+
 }

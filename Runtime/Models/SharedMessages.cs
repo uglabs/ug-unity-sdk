@@ -13,6 +13,9 @@ namespace UG.Models
         [JsonProperty("temperature")]
         public float Temperature { get; set; }
 
+        [JsonProperty("context")]
+        public Dictionary<string, object> Context { get; set; } = new Dictionary<string, object>();
+
         [JsonProperty("utilities")]
         public Dictionary<string, object> Utilities { get; set; } = new Dictionary<string, object>();
     }
@@ -49,6 +52,12 @@ namespace UG.Models
     {
         [JsonProperty("type")]
         public override string Type => "extract";
+
+        [JsonProperty("extract_prompt")]
+        public string ExtractPrompt { get; set; }
+
+        [JsonProperty("additional_context")]
+        public string AdditionalContext { get; set; }
     }
 
     public class AudioConfig

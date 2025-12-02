@@ -28,7 +28,7 @@ namespace UG.Utils
             _sessionResponseCount++;
         }
 
-        public static void SaveAudioData(byte[] audioData, string conversationId)
+        public static void SaveAudioData(byte[] audioData, string conversationId, string extension = ".ogg")
         {
 #if UNITY_EDITOR && DEBUG_SAVE_AUDIO
             if (!_isInitialized)
@@ -36,7 +36,7 @@ namespace UG.Utils
                 Initialize();
             }
 
-            string filePath = $"{_dataPath}/audio_file_new{conversationId}_{_sessionResponseCount}.ogg";
+            string filePath = $"{_dataPath}/audio_file_new{conversationId}_{_sessionResponseCount}{extension}";
 
             UGLog.Log($"Saving audio to file: {filePath}");
 

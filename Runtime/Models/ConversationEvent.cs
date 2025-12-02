@@ -21,6 +21,8 @@ namespace UG
         AuthenticationSuccessful, // Authentication successful at the start of the conversation
         Stopped,
         ConversationPaused,
+        VoiceCaptureNoSpeechTimeout,
+        VoiceCaptureSpeechTooLong,
     }
 
     // Base class for all event data
@@ -79,6 +81,18 @@ namespace UG
     public class ErrorData : ConversationEventData
     {
         public string Message { get; }
+        public enum ErrorType
+        {
+            Unknown,
+            NetworkError, // Not recoverable
+            ResponseError, // Recoverable
+        }
+        public ErrorType Type { get; }
+        public ErrorData(string message, ErrorType type)
+        {
+            Message = message;
+            Type = type;
+        }
         public ErrorData(string message) => Message = message;
     }
 

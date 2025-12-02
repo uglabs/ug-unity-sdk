@@ -12,6 +12,7 @@ using Newtonsoft.Json.Linq;
 using UG.Models.WebSocketRequestMessages;
 using UG.Models.WebSocketResponseMessages;
 using UG.Utils;
+using Newtonsoft.Json;
 
 namespace UG
 {
@@ -23,18 +24,22 @@ namespace UG
             && _currentState != ConversationState.Error;
         public bool IsConversationPaused => _currentState == ConversationState.Paused;
 
+        // Access to conversation commands for external customization
+        // You can set custom commands using ConversationCommands.Set method - e.g. what gets sent when conversation starts or resumes
+        public ConversationCommands ConversationCommands => _conversationCommands;
+
         #region Dependencies
         private VoiceCaptureService _voiceCaptureService;
         private AudioStreamer _audioStreamer;
         private WebSocketService _webSocketService;
-        private UGApiServiceV3 _ugApiServiceV3;
+        private UGApiService _ugApiServiceV3;
         #endregion
 
         #region Settings and configuration
         private UGSDKSettings _settings;
         private ConversationConfiguration _conversationSettings;
-        private List<string> _onOutputUtilities = new List<string>();
-        private List<string> _onInputUtilities = new List<string>();
+        private ConversationCommands _conversationCommands = new ConversationCommands();
+        private int _currentVoiceCaptureMaxSilentRetry = 0;
         #endregion
 
         #region State and runtime variables
@@ -43,11 +48,12 @@ namespace UG
         private bool _isStreamMicrophoneData = false;
         private string _accessToken = null;
         private List<byte> _audioResponseDebugData = new List<byte>();
+        private bool _isTextComplete = false;
         #endregion
 
         public ConversationManager(
             WebSocketService webSocketService,
-            UGApiServiceV3 ugApiServiceV3,
+            UGApiService ugApiServiceV3,
             UGSDKSettings settings,
             AudioStreamer audioStreamer,
             VoiceCaptureService voiceCaptureService
@@ -65,8 +71,8 @@ namespace UG
             // Setup voice capture events
             _voiceCaptureService.OnSpoke += OnVoiceCaptureSpoke;
             _voiceCaptureService.OnSilenced += OnVoiceCaptureSilenced;
-            _voiceCaptureService.OnTimeout += OnVoiceCaptureTimeout;
-            _voiceCaptureService.OnHardTimeout += OnVoiceCaptureHardTimeout;
+            _voiceCaptureService.OnSilenceTimeout += OnVoiceCaptureTimeout;
+            _voiceCaptureService.OnRecordingTooLong += OnVoiceCaptureSpeechTooLong;
             _voiceCaptureService.OnVADClosingTime += OnVoiceCaptureVADClosingTime;
 
             // Setup audio player events
@@ -94,7 +100,7 @@ namespace UG
             };
             _audioStreamer.AudioOutputBenchmark.OnAudioPlaybackStarted += OnAudioPlaybackStarted;
 
-            _ = StartAddingMicrophoneAudioData();
+            _ = Task.Run(async () => await StartAddingMicrophoneAudioData());
         }
 
         private void StreamerPlaybackTimeUpdate(float playbackTime)
@@ -121,7 +127,7 @@ namespace UG
             UGLog.Log("StartConversation: " + _currentState);
             if (_currentState != ConversationState.Idle)
             {
-                ResumeConversation();
+                ResumeConversation(_conversationCommands.PauseResumeCommand);
                 return;
             }
 
@@ -166,19 +172,31 @@ namespace UG
             }
         }
 
-        private void ResumeConversation()
+        // Resume conversation with a text command
+        private void ResumeConversation(string textCommand)
         {
+            if (!_webSocketService.IsConnected())
+            {
+                UGLog.LogError("ResumeConversation: Not connected - reconnecting...");
+                // TODO: Reconnect if needed
+                return;
+            }
+
+            // Clear audio because we can't send both commands and audio at the same time
+            var clearAudioRequest = Messages.CreateClearAudioMessage();
+            SendMessage(clearAudioRequest);
+
             UGLog.Log("ResumeConversation: " + _currentState);
             _audioStreamer.AudioOutputBenchmark.StartBenchmark(true);
             SetState(ConversationState.Processing);
             OnConversationEvent?.Invoke(new ConversationEvent(ConversationEventType.Processing));
 
             var interactRequest = Messages.CreateInteractMessage(
-                text: "[resume_conversation]",
+                text: textCommand,
                 speakers: new List<string>(),
-                context: new Dictionary<string, object> { },
-                onInput: _onInputUtilities,
-                onOutput: _onOutputUtilities,
+                context: _conversationSettings.Context,
+                onInput: _conversationSettings.OnInputUtilities,
+                onOutput: _conversationSettings.OnOutputUtilities,
                 audioOutput: true
             );
             UGLog.Log("Interact message: " + interactRequest.ToJson());
@@ -194,6 +212,16 @@ namespace UG
             switch (response)
             {
                 case TextEvent textEvent:
+                    // Clear UI if this is the first text event
+                    if (_isTextComplete)
+                    {
+                        OnConversationEvent?.Invoke(new ConversationEvent(
+                            ConversationEventType.InteractionStarted,
+                            componentId: "v3"
+                        ));
+                        _isTextComplete = false;
+                    }
+
                     OnConversationEvent?.Invoke(new ConversationEvent(ConversationEventType.TextReceived,
                         componentId: "",
                         new TextReceivedData(textEvent.Text)
@@ -204,6 +232,9 @@ namespace UG
                     if (!string.IsNullOrEmpty(audioEvent.Audio))
                     {
                         byte[] audioData = Convert.FromBase64String(audioEvent.Audio);
+#if DEBUG_SAVE_AUDIO
+                        ConversationAudioDebug.SaveAudioData(audioData, DateTime.Now.Ticks.ToString(), ".byte");
+#endif
                         OnConversationEvent?.Invoke(new ConversationEvent(ConversationEventType.AudioReceived, componentId: "",
                             new AudioReceivedData(audioData)
                         ));
@@ -227,6 +258,8 @@ namespace UG
                     break;
 
                 case InteractionStartedEvent:
+                    UGLog.Log("Interaction started");
+
                     OnConversationEvent?.Invoke(new ConversationEvent(
                         ConversationEventType.InteractionStarted,
                         componentId: "v3"
@@ -235,6 +268,7 @@ namespace UG
 
                 case TextCompleteEvent:
                     UGLog.Log("Text complete");
+                    _isTextComplete = true;
                     break;
 
                 case AudioCompleteEvent:
@@ -245,16 +279,17 @@ namespace UG
                     break;
 
                 case InteractionCompleteEvent:
+                    Debug.Log("<Interaction complete>");
                     OnConversationEvent?.Invoke(new ConversationEvent(ConversationEventType.InteractionComplete, componentId: "v3"));
                     break;
 
                 case InteractionErrorEvent errorEvent:
-                    OnConversationEvent?.Invoke(new ConversationEvent(ConversationEventType.Error, componentId: "v3", new ErrorData(errorEvent.Error)));
+                    EmitErrorEvent(errorEvent.Error);
                     SetState(ConversationState.Error);
                     break;
 
                 case DataEvent dataEvent:
-                    UGLog.Log($"Data received: {dataEvent.Data}");
+                    UGLog.Log($"Data received: {dataEvent.Data.Count} items");
                     OnConversationEvent?.Invoke(new ConversationEvent(ConversationEventType.DataReceived, componentId: "v3",
                         new DataReceivedData(dataEvent.Data)));
                     break;
@@ -267,7 +302,7 @@ namespace UG
                 case ErrorResponse errorResponse:
                     UGLog.LogError($"Server error: {errorResponse.Error}");
                     SetState(ConversationState.Error);
-                    OnConversationEvent?.Invoke(new ConversationEvent(ConversationEventType.Error, componentId: "v3", new ErrorData(errorResponse.Error)));
+                    EmitErrorEvent(errorResponse.Error);
                     break;
 
                 case GetConfigurationResponse configResponse:
@@ -276,6 +311,11 @@ namespace UG
                     foreach (var utility in configResponse.Config.Utilities ?? new Dictionary<string, object>())
                     {
                         UGLog.Log($"Utility '{utility.Key}': {utility.Value?.GetType().Name}");
+                    }
+                    UGLog.Log($"Context count: {configResponse.Config.Context?.Count ?? 0}");
+                    foreach (var context in configResponse.Config.Context ?? new Dictionary<string, object>())
+                    {
+                        UGLog.Log($"Context '{context.Key}': {context.Value}");
                     }
                     break;
 
@@ -316,7 +356,7 @@ namespace UG
             yield return authRequest.ToJson();
 
             //set config
-            yield return GetSetConfigurationMessage().ToJson();
+            yield return Messages.CreateSetConfigurationMessage(_conversationSettings).ToJson();
 
             // get config
             GetConfigurationRequest getConfigRequest = Messages.CreateGetConfigurationMessage();
@@ -324,18 +364,18 @@ namespace UG
             await _webSocketService.SendMessageAsync(getConfigRequest.ToJson());
 
             var interactRequest = Messages.CreateInteractMessage(
-                text: "hello", // Should be replaced with [start_conversation]
+                text: _conversationCommands.StartCommand,
                 speakers: new List<string>(),
-                context: new Dictionary<string, object> { },
-                onInput: _onInputUtilities,
-                onOutput: _onOutputUtilities,
+                context: _conversationSettings.Context,
+                onInput: _conversationSettings.OnInputUtilities,
+                onOutput: _conversationSettings.OnOutputUtilities,
                 audioOutput: true
             );
             UGLog.Log("Interact message: " + interactRequest.ToJson());
             await _webSocketService.SendMessageAsync(interactRequest.ToJson());
         }
 
-        // Response parsing - return values are casted to the appropriate type
+        // Response parsing - return values are casted to the appropriate WebSocketResponseMessage type
         private WebSocketResponseMessage ParseResponse(string jsonLine)
         {
             try
@@ -396,25 +436,27 @@ namespace UG
             _accessToken = accessToken;
         }
 
+        public void SetConfigurationFromJson(string configurationJson)
+        {
+            try
+            {
+                _conversationSettings = JsonConvert.DeserializeObject<ConversationConfiguration>(configurationJson);
+                SetConfiguration(_conversationSettings);
+            }
+            catch (Exception ex)
+            {
+                UGLog.LogError($"Failed to set configuration from JSON: {ex.Message}");
+            }
+        }
+
         // Can be applied in runtime
         public void SetConfiguration(ConversationConfiguration conversationConfiguration)
         {
             _conversationSettings = conversationConfiguration;
 
             UGLog.Log("[ConversationManager] SetConfiguration: " + conversationConfiguration.Prompt + " " + conversationConfiguration.Temperature + " " + conversationConfiguration.IsAllowInterrupts);
-            SetConfigurationRequest setConfigRequest = GetSetConfigurationMessage();
+            SetConfigurationRequest setConfigRequest = Messages.CreateSetConfigurationMessage(_conversationSettings);
             _ = _webSocketService.SendMessageAsync(setConfigRequest.ToJson());
-        }
-
-        private SetConfigurationRequest GetSetConfigurationMessage()
-        {
-            SetConfigurationRequest setConfigRequest = Messages.CreateSetConfigurationMessage(
-                prompt: _conversationSettings.Prompt,
-                temperature: _conversationSettings.Temperature,
-                utilities: _conversationSettings.Utilities
-            );
-            UGLog.Log("Set configuration message: " + setConfigRequest.ToJson());
-            return setConfigRequest;
         }
 
 
@@ -445,10 +487,13 @@ namespace UG
         // When user speech is detected
         private void OnVoiceCaptureSpoke()
         {
+            _currentVoiceCaptureMaxSilentRetry = 0;
+
             SetState(ConversationState.PlayerSpoke);
 
             // Send a message to clear audio first (in case it was not cleared from pause)
             var clearAudioRequest = Messages.CreateClearAudioMessage();
+            // _ = _webSocketService.SendMessageAsync(clearAudioRequest.ToJson());
             SendMessage(clearAudioRequest);
 
             OnConversationEvent?.Invoke(new ConversationEvent(ConversationEventType.PlayerSpoke, componentId: "v3"));
@@ -463,11 +508,8 @@ namespace UG
             _isStreamMicrophoneData = true;
         }
 
-        private async Awaitable StartAddingMicrophoneAudioData()
+        private async Task StartAddingMicrophoneAudioData()
         {
-            // Switch to the backgroudn thread - we just keep this task running and waiting for when we have data
-            await Awaitable.BackgroundThreadAsync();
-
             List<byte> accumulatedBytes = new List<byte>();
 
             while (true)
@@ -521,6 +563,15 @@ namespace UG
             // If TurnTaker is not enabled, we just finish
             // If enabled, we just send check turn event but keep sending audio data (check_turn)
 
+            // Handle max silent retry
+            if (_currentVoiceCaptureMaxSilentRetry >= _conversationSettings.VoiceCaptureMaxSilentRetry)
+            {
+                UGLog.LogError("Voice capture max silent retry reached, stopping conversation");
+                StopConversation();
+                return;
+            }
+            _currentVoiceCaptureMaxSilentRetry++;
+
             OnConversationEvent?.Invoke(new ConversationEvent(ConversationEventType.MicrophoneSilenced, componentId: "v3"));
 
             // Start RTT benchmark
@@ -537,16 +588,16 @@ namespace UG
             _audioStreamer.Flush();
 
 #if UNITY_EDITOR && DEBUG_SAVE_AUDIO
-            ConversationAudioUGLog.SaveAudioData(_audioResponseDebugData.ToArray(), DateTime.Now.Ticks.ToString());
+            ConversationAudioDebug.SaveAudioData(_audioResponseDebugData.ToArray(), DateTime.Now.Ticks.ToString());
             _audioResponseDebugData.Clear();
 #endif
 
             var interactRequest = Messages.CreateInteractMessage(
                 text: null,
                 speakers: new List<string>(),
-                context: new Dictionary<string, object> { },
-                onInput: _onInputUtilities,
-                onOutput: _onOutputUtilities,
+                context: _conversationSettings.Context,
+                onInput: _conversationSettings.OnInputUtilities,
+                onOutput: _conversationSettings.OnOutputUtilities,
                 audioOutput: true
             );
             UGLog.Log("Interact message: " + interactRequest.ToJson());
@@ -563,13 +614,25 @@ namespace UG
 
         private void OnVoiceCaptureTimeout()
         {
-            UGLog.Log("Voice capture timeout");
-            OnConversationEvent?.Invoke(new ConversationEvent(ConversationEventType.LongTimeoutTriggered, componentId: "v3"));
+            UGLog.Log("Voice capture timeout - no speech detected for a while");
+
+            // Emit timeout event
+            OnConversationEvent?.Invoke(new ConversationEvent(ConversationEventType.VoiceCaptureNoSpeechTimeout, componentId: ""));
+
+            // Conversation is automatically paused and we send resume message
+            PauseConversation();
+            ResumeConversation(_conversationCommands.PauseResumeCommand);
         }
 
-        private void OnVoiceCaptureHardTimeout()
+        private void OnVoiceCaptureSpeechTooLong()
         {
-            UGLog.Log("OnVoiceCaptureHardTimeout");
+            UGLog.Log("Voice capture timeout - speech was too long to process");
+
+            // Emit speech too long event - can be ignored or logged as a warning
+            OnConversationEvent?.Invoke(new ConversationEvent(ConversationEventType.VoiceCaptureSpeechTooLong, componentId: ""));
+
+            // Consider this as audio silenced
+            OnVoiceCaptureSilenced();
         }
         #endregion
 
@@ -577,8 +640,8 @@ namespace UG
         {
             _voiceCaptureService.OnSpoke -= OnVoiceCaptureSpoke;
             _voiceCaptureService.OnSilenced -= OnVoiceCaptureSilenced;
-            _voiceCaptureService.OnTimeout -= OnVoiceCaptureTimeout;
-            _voiceCaptureService.OnHardTimeout -= OnVoiceCaptureHardTimeout;
+            _voiceCaptureService.OnSilenceTimeout -= OnVoiceCaptureTimeout;
+            _voiceCaptureService.OnRecordingTooLong -= OnVoiceCaptureSpeechTooLong;
             _voiceCaptureService.OnVADClosingTime -= OnVoiceCaptureVADClosingTime;
 
             _cancellationTokenSource?.Dispose();
@@ -605,10 +668,12 @@ namespace UG
 
         public void StopConversation()
         {
+            _currentVoiceCaptureMaxSilentRetry = 0;
             PauseConversation();
             Task.Run(async () =>
             {
                 await _webSocketService.Close();
+                OnConversationEvent?.Invoke(new ConversationEvent(ConversationEventType.Stopped));
             });
             SetState(ConversationState.Idle);
         }
@@ -617,6 +682,8 @@ namespace UG
         {
             SetState(ConversationState.Idle);
 
+            _currentVoiceCaptureMaxSilentRetry = 0;
+
             // Cancel all pending tasks
             _cancellationTokenSource?.Cancel();
 
@@ -624,6 +691,11 @@ namespace UG
             StopAndClearVoiceRecording();
             _audioStreamer.Stop();
             _audioStreamer.Flush();
+
+            // Clear configuartion
+            _conversationSettings = new ConversationConfiguration();
+            _conversationSettings.OnInputUtilities = new List<string>();
+            _conversationSettings.OnOutputUtilities = new List<string>();
 
             // Close websocket
             Task.Run(async () =>
@@ -641,17 +713,72 @@ namespace UG
 
         public void SetOnOutputUtilities(List<string> utilities)
         {
-            _onOutputUtilities = utilities;
+            _conversationSettings.OnOutputUtilities = utilities;
         }
         public void SetOnInputUtilities(List<string> utilities)
         {
-            _onInputUtilities = utilities;
+            _conversationSettings.OnInputUtilities = utilities;
         }
 
         public void SetState(ConversationState state)
         {
             UGLog.Log("Set Conversation State: " + state);
             _currentState = state;
+        }
+
+        public void EmitErrorEvent(string error)
+        {
+            OnConversationEvent?.Invoke(new ConversationEvent(ConversationEventType.Error,
+                componentId: "",
+                new ErrorData(error))
+            );
+        }
+
+        /// <summary>
+        /// Interrupt audio playback/voice recording and send a text message
+        /// </summary>
+        /// <param name="text"></param>
+        public async void SendTextMessage(string text, bool isAudioOutput)
+        {
+            if (!IsConversationRunning || _webSocketService == null || !_webSocketService.IsConnected())
+            {
+                UGLog.LogWarning("[ConversationManager] SendTextMessage: Conversation is not running or websocket is not connected");
+                return;
+            }
+
+            // Interrupt audio and voice capture
+            if (_audioStreamer.IsStreaming())
+            {
+                _audioStreamer.Stop();
+                _audioStreamer.Flush();
+            }
+            if (_voiceCaptureService.State != VoiceCaptureService.VoiceCaptureState.Idle)
+            {
+                _voiceCaptureService.Clear();
+                _voiceCaptureService.StopRecording();
+            }
+
+            SetState(ConversationState.Processing);
+            OnConversationEvent?.Invoke(new ConversationEvent(ConversationEventType.Processing));
+
+            // Send a message to clear audio we already sent
+            var clearAudioRequest = Messages.CreateClearAudioMessage();
+            await _webSocketService.SendMessageAsync(clearAudioRequest.ToJson());
+
+            // Update configuartion (audio/no audio flag)
+            // _conversationSettings.IsAudioOutput = isAudioOutput;
+            // SetConfiguration(_conversationSettings);
+
+            var interactRequest = Messages.CreateInteractMessage(
+                text: text,
+                speakers: new List<string>(),
+                context: _conversationSettings.Context,
+                onInput: _conversationSettings.OnInputUtilities,
+                onOutput: _conversationSettings.OnOutputUtilities,
+                audioOutput: isAudioOutput
+            );
+            UGLog.Log("Interact message: " + interactRequest.ToJson());
+            SendMessage(interactRequest);
         }
 
         #region Benchmark
@@ -663,6 +790,11 @@ namespace UG
             {
                 BenchmarkRTTReceived?.Invoke(timeStartedIn, isInitialBenchmark);
             });
+        }
+
+        public ConversationConfiguration GetConfiguration()
+        {
+            return _conversationSettings;
         }
         #endregion
     }

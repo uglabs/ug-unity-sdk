@@ -35,18 +35,18 @@ namespace UG.Models.WebSocketRequestMessages
                 audioOutput: audioOutput,
                 languageCode: languageCode);
         }
-        
-        
+
+
         public static GetConfigurationRequest CreateGetConfigurationMessage()
         {
             return new GetConfigurationRequest(uid: GetUid(), clientStartTime: GetClientStartTime());
         }
 
-        public static SetConfigurationRequest CreateSetConfigurationMessage(string prompt, float temperature, Dictionary<string, object> utilities = null)
+        public static SetConfigurationRequest CreateSetConfigurationMessage(ConversationConfiguration conversationConfiguration)
         {
             return new SetConfigurationRequest(uid: GetUid(),
                 clientStartTime: GetClientStartTime(),
-                config: new ConfigurationData { Prompt = prompt, Temperature = temperature, Utilities = utilities ?? new Dictionary<string, object>() });
+                config: conversationConfiguration);
         }
 
         public static AddAudioRequest CreateAddAudioMessage(string audio, AudioConfig config = null)
@@ -80,6 +80,41 @@ namespace UG.Models.WebSocketRequestMessages
                 clientStartTime: GetClientStartTime(),
                 targetUid: targetUid,
                 atCharacter: atCharacter);
+        }
+
+        public static RenderPromptRequest CreateRenderPromptMessage(Dictionary<string, object> context = null)
+        {
+            return new RenderPromptRequest(uid: GetUid(),
+                clientStartTime: GetClientStartTime(),
+                context: context ?? new Dictionary<string, object>());
+        }
+
+        public static GenerateImageRequest CreateGenerateImageMessage(string prompt, string provider,
+            string negativePrompt = null,
+            int? seed = null,
+            int? inferenceSteps = null,
+            string generationType = null,
+            string model = null,
+            string image = null,
+            float? strength = null,
+            float? guidanceScale = null,
+            string loraWeights = null,
+            float? loraScale = null)
+        {
+            return new GenerateImageRequest(uid: GetUid(),
+                clientStartTime: GetClientStartTime(),
+                prompt: prompt,
+                provider: provider,
+                negativePrompt: negativePrompt,
+                seed: seed,
+                inferenceSteps: inferenceSteps,
+                generationType: generationType,
+                model: model,
+                image: image,
+                strength: strength,
+                guidanceScale: guidanceScale,
+                loraWeights: loraWeights,
+                loraScale: loraScale);
         }
 
         public static string GetUid()
@@ -133,7 +168,7 @@ namespace UG.Models.WebSocketRequestMessages
 
         [JsonProperty("audio_output")]
         public bool AudioOutput;
-        
+
         [JsonProperty("language_code")]
         public string LanguageCode { get; set; }
 
@@ -192,9 +227,9 @@ namespace UG.Models.WebSocketRequestMessages
     public class SetConfigurationRequest : WebSocketRequestMessage
     {
         [JsonProperty("config")]
-        public ConfigurationData Config { get; set; }
+        public ConversationConfiguration Config { get; set; }
 
-        public SetConfigurationRequest(string uid, string clientStartTime, ConfigurationData config)
+        public SetConfigurationRequest(string uid, string clientStartTime, ConversationConfiguration config)
         {
             Uid = uid;
             Kind = "set_configuration";
@@ -269,6 +304,87 @@ namespace UG.Models.WebSocketRequestMessages
         }
     }
 
+    public class RenderPromptRequest : WebSocketRequestMessage
+    {
+        [JsonProperty("context")]
+        public Dictionary<string, object> Context { get; set; }
+
+        public RenderPromptRequest(string uid, string clientStartTime, Dictionary<string, object> context)
+        {
+            Uid = uid;
+            Kind = "render_prompt";
+            ClientStartTime = clientStartTime;
+            Context = context;
+        }
+    }
+
+    public class GenerateImageRequest : WebSocketRequestMessage
+    {
+        [JsonProperty("prompt")]
+        public string Prompt { get; set; }
+
+        [JsonProperty("provider")]
+        public string Provider { get; set; }
+
+        [JsonProperty("negative_prompt")]
+        public string NegativePrompt { get; set; }
+
+        [JsonProperty("seed")]
+        public int? Seed { get; set; }
+
+        [JsonProperty("inference_steps")]
+        public int? InferenceSteps { get; set; }
+
+        [JsonProperty("generation_type")]
+        public string GenerationType { get; set; }
+
+        [JsonProperty("model")]
+        public string Model { get; set; }
+
+        [JsonProperty("image")]
+        public string Image { get; set; }
+
+        [JsonProperty("strength")]
+        public float? Strength { get; set; }
+
+        [JsonProperty("guidance_scale")]
+        public float? GuidanceScale { get; set; }
+
+        [JsonProperty("lora_weights")]
+        public string LoraWeights { get; set; }
+
+        [JsonProperty("lora_scale")]
+        public float? LoraScale { get; set; }
+
+        public GenerateImageRequest(string uid, string clientStartTime, string prompt, string provider,
+            string negativePrompt = null,
+            int? seed = null,
+            int? inferenceSteps = null,
+            string generationType = null,
+            string model = null,
+            string image = null,
+            float? strength = null,
+            float? guidanceScale = null,
+            string loraWeights = null,
+            float? loraScale = null)
+        {
+            Uid = uid;
+            Kind = "generate_image";
+            ClientStartTime = clientStartTime;
+            Prompt = prompt;
+            Provider = provider;
+            NegativePrompt = negativePrompt;
+            Seed = seed;
+            InferenceSteps = inferenceSteps;
+            GenerationType = generationType;
+            Model = model;
+            Image = image;
+            Strength = strength;
+            GuidanceScale = guidanceScale;
+            LoraWeights = loraWeights;
+            LoraScale = loraScale;
+        }
+    }
 
     public class AudioConfig
     {

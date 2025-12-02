@@ -11,15 +11,21 @@ namespace UG.Services.AudioStreamingService
     // Handles buffering/streaming of audio from the server (mp3)
     public class AudioStreamer : MonoBehaviour
     {
+        #region Constants
         private const int BufferSize = 256; // Buffer size in samples
         private const int SampleRate = 44100; // Sample rate
         private const float MinDataToPlayKb = 16; // Wait for 16Kb of data
+        #endregion
+
+
         private AudioClip _audioClip;
         private AudioSource _audioSource;
         private readonly AudioChunkFormatter _chunkFormatter = new();
+        private MP3Decoder _mp3Decoder;
         private int _dataReadPointer = 0;
         private List<byte[]> _completeChunks = new();
         private float[] _samplesData;
+        private int _totalSamplesDataAdded;
         private bool _isEndOfStream = false;
         private int _totalEmptySamplesCount = 0;
         private int _firstSampleValue = -1;
@@ -40,6 +46,7 @@ namespace UG.Services.AudioStreamingService
         public Action<float> OnPlaybackTimeUpdate; // Playback time in seconds
         public Action OnPlaybackComplete;
         public Action OnStartedPlayingSamples;
+        private int _detectedSampleRate;
         #endregion
 
         public void Init(string audioFormat, int bufferingLevel)
@@ -74,13 +81,10 @@ namespace UG.Services.AudioStreamingService
 
         public void Play()
         {
-            bool isPlayingMP3 = _outputAudioFormat == "audio/mpeg";
-
-            _audioClip = AudioClip.Create("StreamedAudio", BufferSize, 1, SampleRate * (isPlayingMP3 ? 2 : 1), true, OnAudioRead);
+            _audioClip = AudioClip.Create("StreamedAudio", BufferSize, 1, SampleRate, true, OnAudioRead);
             _audioSource.clip = _audioClip;
             _audioSource.volume = 0.9f;
             _audioSource.Play();
-            UGLog.Log("Start playback: " + DateTime.Now.ToString("HH:mm:ss:fff"));
         }
 
         public void Stop()
@@ -112,26 +116,23 @@ namespace UG.Services.AudioStreamingService
         // Add chunk to pass through the formatter (might not be complete)
         public void AddChunk(byte[] chunk)
         {
+            if (_mp3Decoder == null)
+            {
+                _mp3Decoder = new MP3Decoder();
+            }
             _chunkFormatter.AddChunk(chunk);
         }
 
         public void ForcePlayChunks()
         {
-            AddCompleteChunk(new byte[0], true, false);
+            AddCompleteChunk(new byte[0], true);
         }
 
-        private void AddCompleteChunk(byte[] chunk, bool isDontWaitForSecondChunk = false, bool isTrace = true)
+        private void AddCompleteChunk(byte[] chunk, bool isDontWaitForSecondChunk = false)
         {
             if (chunk != null && chunk.Length != 0)
             {
                 _completeChunks.Add(chunk);
-
-                // Log size of first chunk in KB
-                if (_completeChunks.Count == 1)
-                {
-                    float chunkSizeKB = chunk.Length / 1024f;
-                    UGLog.Log($"First audio chunk size: {chunkSizeKB:F2} KB");
-                }
             }
 
             // Calculate total size of all chunks
@@ -141,18 +142,63 @@ namespace UG.Services.AudioStreamingService
 
             if (!hasEnoughData && !isDontWaitForSecondChunk)
             {
+                UGLog.Log("[AudioStreamer] Not enough data to play, waiting for more");
                 return;
             }
 
             // If we don't have any chunks, don't play
             if (_completeChunks == null || _completeChunks.Count == 0)
             {
+                UGLog.Log("[AudioStreamer] No chunks to play");
                 return;
             }
 
             bool isStartingPlayback = !_isStreaming && !_isPlayingSamples;
 
-            _samplesData = AudioUtils.ConvertMP3ToPCM(CombineChunks(_completeChunks));
+            float[] newSamples = DecodeChunk(chunk);
+
+            // Combine new samples with existing samples
+            if (_samplesData == null || _samplesData.Length == 0)
+            {
+                _samplesData = newSamples;
+                _totalSamplesDataAdded = newSamples.Length;
+            }
+            else if (newSamples.Length > 0)
+            {
+                // Combine existing samples with new samples
+                float[] combinedSamples = new float[_samplesData.Length + newSamples.Length];
+                Array.Copy(_samplesData, 0, combinedSamples, 0, _samplesData.Length);
+                Array.Copy(newSamples, 0, combinedSamples, _samplesData.Length, newSamples.Length);
+                _samplesData = combinedSamples;
+                _totalSamplesDataAdded = _samplesData.Length;
+            }
+        }
+
+        private float[] DecodeChunk(byte[] chunk)
+        {
+            if (chunk == null || chunk.Length == 0)
+                return new float[0];
+
+            try
+            {
+                float[] decodedSamples = _mp3Decoder.ProcessChunk(chunk);
+
+                // Log audio format on first successful decode
+                if (decodedSamples.Length > 0 && !_isStreaming)
+                {
+                    (int sampleRate, int channels) = _mp3Decoder.GetAudioFormat();
+                    int detectedSampleRate = _mp3Decoder.GetDetectedSampleRate();
+                    _detectedSampleRate = detectedSampleRate;
+                    UGLog.Log($"Decoded audio format: {detectedSampleRate}Hz, {channels} channels");
+                }
+
+                return decodedSamples;
+            }
+            catch (Exception ex)
+            {
+                UGLog.LogError($"Error processing chunk with NLayer: {ex.Message}");
+                return new float[0];
+            }
         }
 
         private void OnAudioRead(float[] data)
@@ -161,7 +207,7 @@ namespace UG.Services.AudioStreamingService
             int emptySamples = 0;
             while (dataOffset < data.Length)
             {
-                if (_samplesData != null && _samplesData.Length > data.Length + _dataReadPointer)
+                if (_samplesData != null && _dataReadPointer + data.Length <= _samplesData.Length)
                 {
                     Array.Copy(_samplesData, _dataReadPointer, data, 0, data.Length);
                     _dataReadPointer += data.Length;
@@ -342,8 +388,14 @@ namespace UG.Services.AudioStreamingService
                 _audioSource.clip = null;
                 _audioSource.Stop();
             }
+            if (_mp3Decoder != null)
+            {
+                _mp3Decoder.Dispose();
+                _mp3Decoder = null;
+            }
             _dataReadPointer = 0;
             _completeChunks.Clear();
+            _chunkFormatter.Clear();
             _samplesData = null;
             _isEndOfStream = false;
             _isAllSamplesPlayed = false;
@@ -354,6 +406,8 @@ namespace UG.Services.AudioStreamingService
             playbackTimeDSP = 0;
             lastSamplePosition = 0;
             _isPlayingSamples = false;
+            _totalSamplesDataAdded = 0;
+            _detectedSampleRate = 0;
         }
 
 #if DEBUG_AUDIO

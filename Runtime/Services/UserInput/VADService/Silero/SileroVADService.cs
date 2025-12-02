@@ -79,9 +79,8 @@ namespace UG.Services
 
             var speechProbability = GetSpeechProbability(audioChunk);
 #if UG_VAD_DEBUG
-        UnityEngine.Debug.Log($"[VAD] Speech probability: {speechProbability:F4} (threshold: {_threshold:F4}, toSilence: {_toSilenceThreshold:F4}), chunks: {_speechChunksDetected}");
+            UnityEngine.Debug.Log($"[VAD] Speech probability: {speechProbability:F4} (threshold: {_threshold:F4}, toSilence: {_toSilenceThreshold:F4}), chunks: {_speechChunksDetected}");
 #endif
-
             OnSpeechProbabilityValueChanged?.Invoke(speechProbability);
 
             // Update last speech time if speech is detected

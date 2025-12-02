@@ -126,9 +126,16 @@ namespace UG.Services
             }
         }
 
+        public void SetAudioProcessingEnabled(bool enabled)
+        {
+            shouldProcessAudio = enabled;
+        }
+
         private void OnDestroy()
         {
-            
+            shouldProcessAudio = false;
+            monoConversionBuffer.Dispose();
+            cachedMonoArrays.Clear();
         }
     }
 }

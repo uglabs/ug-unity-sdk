@@ -23,7 +23,7 @@ namespace UG.Managers
 
         #region Dependencies
         private readonly UGSDKSettings _settings;
-        private readonly UGApiServiceV3 _ugApiService;
+        private readonly UGApiService _ugApiService;
         #endregion
 
         public string AccessToken { get; private set; }
@@ -33,7 +33,7 @@ namespace UG.Managers
         private CancellationTokenSource _cancellationTokenSource;
 
         public AuthenticationManager(UGSDKSettings settings,
-            UGApiServiceV3 ugApiService)
+            UGApiService ugApiService)
         {
             _settings = settings;
             _ugApiService = ugApiService;

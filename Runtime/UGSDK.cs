@@ -11,6 +11,7 @@ using UG.Managers;
 using UG.Settings;
 using UG.Utils;
 using UnityEngine;
+using System.Collections.Generic;
 
 namespace UG
 {
@@ -18,10 +19,11 @@ namespace UG
     {
         #region V3 Services 
         private static IHttpService _httpService;
-        private static WebSocketService _webSocketServiceV3;
+        private static WebSocketService _webSocketService;
+        private static List<WebSocketService> _webSocketServices;
         private static UGSDKSettings _settings;
         private static string _playerId;
-        private static UGApiServiceV3 _ugApiServiceV3;
+        private static UGApiService _ugApiServiceV3;
         private static AudioStreamer _audioStreamer;
         private static VoiceCaptureService _voiceCaptureService;
         private static IAudioRecordingService _audioRecordingService;
@@ -29,9 +31,11 @@ namespace UG
         #endregion
 
         #region V3 Managers
-        private static ConversationManager _conversationManager;
-        public static ConversationManager ConversationManager { get => _conversationManager; }
         private static AuthenticationManager _authenticationManager;
+        private static ConversationManager _conversationManager;
+        private static DialogueManager _dialogueManager;
+        public static ConversationManager ConversationManager { get => _conversationManager; }
+        public static DialogueManager DialogueManager { get => _dialogueManager; }
         #endregion
 
         #region Runtime variables
@@ -95,8 +99,14 @@ namespace UG
 
             // Web services
             _httpService = new HttpClientService(sdkSettings.host);
-            _ugApiServiceV3 = new UGApiServiceV3(_settings, _httpService);
-            _webSocketServiceV3 = new WebSocketService(_settings.host, null);
+            _ugApiServiceV3 = new UGApiService(_settings, _httpService);
+            _webSocketService = new WebSocketService(_settings.host, null);
+            // create multiple services for multi-character conversations
+            _webSocketServices = new List<WebSocketService>();
+            for (int i = 0; i < 5; i++)
+            {
+                _webSocketServices.Add(new WebSocketService(_settings.host, null));
+            }
 
             // Create authentication manager & authenticate right away
             _authenticationManager = new AuthenticationManager(
@@ -108,11 +118,17 @@ namespace UG
 
             // Create conversation manager
             _conversationManager = new ConversationManager(
-                webSocketService: _webSocketServiceV3,
+                webSocketService: _webSocketService,
                 ugApiServiceV3: _ugApiServiceV3,
                 settings: _settings,
                 audioStreamer: _audioStreamer,
                 voiceCaptureService: _voiceCaptureService);
+            
+            // Create dialogue manager
+            _dialogueManager = new DialogueManager(
+                audioStreamer: _audioStreamer,
+                webSocketServices: _webSocketServices,
+                ugApiServiceV3: _ugApiServiceV3);
 
             UGLog.Log("UGSDK Initialized");
             return new UGSDK();
@@ -121,11 +137,14 @@ namespace UG
         public static void OnAuthenticated(string accessToken)
         {
             _conversationManager.SetAccessToken(accessToken);
+            _dialogueManager.SetAccessToken(accessToken);
         }
 
         public static void OnAuthenticationFailed()
         {
-            UGLog.LogError("Authentication failed - please try again or check your credentials");
+            string authError = "Authentication failed - please try again or check your credentials";
+            UGLog.LogError(authError);
+            ConversationManager.EmitErrorEvent(authError);
         }
 
         public static void SetDSPBufferSize(int bufferSize)
@@ -136,6 +155,15 @@ namespace UG
                 config.dspBufferSize = bufferSize;
                 bool isReset = AudioSettings.Reset(config);
             }
+        }
+
+        /// <summary>
+        /// Set AEC enabled/disabled - enabled by default, only disable if you encounter issues or for specific use cases
+        /// </summary>
+        /// <param name="isEnabled"></param>
+        public static void SetAECEnabled(bool isEnabled)
+        {
+            
         }
 
         public static void SetVADThreshold(float minSilenceDurationMs = 650,

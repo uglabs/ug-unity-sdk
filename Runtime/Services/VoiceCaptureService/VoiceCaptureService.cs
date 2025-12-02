@@ -25,8 +25,7 @@ namespace UG.Services
         private DateTime _recordingStartTime;
         public Action OnSpoke;
         public Action OnSilenced;
-        public Action OnTimeout;
-        public Action OnHardTimeout;
+        public Action OnSilenceTimeout;
         public Action OnRecordingTooLong;
         public Action<DateTime, DateTime> OnVADClosingTime;
 
@@ -113,7 +112,8 @@ namespace UG.Services
             };
             _vadService.OnHardTimeout += () =>
             {
-                OnHardTimeout?.Invoke();
+                UGLog.Log("Voice capture speech length timeout");
+                // OnHardTimeout?.Invoke();
             };
 
             _vadService.OnVADClosingTime += (start, end) => OnVADClosingTime?.Invoke(start, end);
@@ -225,7 +225,7 @@ namespace UG.Services
                         _micEncodedStreamDataQueue.Clear();
                         _micRawDataQueue.Clear();
                         FinishConversionStream();
-                        OnTimeout?.Invoke();
+                        OnSilenceTimeout?.Invoke();
                         return;
                     }
                 }

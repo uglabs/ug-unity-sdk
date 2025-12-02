@@ -209,7 +209,7 @@ namespace UG.Services.UserInput.AudioRecordingService
 #endif
         }
 
-        private async Awaitable ReadSamplesContinuouslyAsync(CancellationToken cancellationToken)
+        private async Task ReadSamplesContinuouslyAsync(CancellationToken cancellationToken)
         {
             while (!cancellationToken.IsCancellationRequested && isRecording)
             {

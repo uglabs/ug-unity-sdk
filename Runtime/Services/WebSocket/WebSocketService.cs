@@ -1,6 +1,5 @@
 using System;
 using System.Threading.Tasks;
-using UnityEngine;
 using NativeWebSocket;
 using System.Collections.Generic;
 using System.Text;
@@ -378,6 +377,11 @@ namespace UG.Services.WebSocket
                     _disposed = true;
                 }
             }
+        }
+
+        internal bool IsConnected()
+        {
+            return _isConnected;
         }
 
         ~WebSocketService()

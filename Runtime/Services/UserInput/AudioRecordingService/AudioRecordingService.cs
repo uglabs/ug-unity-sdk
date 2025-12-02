@@ -108,7 +108,7 @@ namespace UG.Services.UserInput.AudioRecordingService
             microphoneClip = null;
         }
 
-        private async Awaitable ReadSamplesContinuouslyAsync(CancellationToken cancellationToken)
+        private async Task ReadSamplesContinuouslyAsync(CancellationToken cancellationToken)
         {
             try
             {
