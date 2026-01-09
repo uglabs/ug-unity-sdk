@@ -59,6 +59,9 @@ namespace UG
             }
 
             ValidateSettings(sdkSettings);
+
+            UGLog.SetLogLevel(sdkSettings.logLevel);
+            
             _settings = sdkSettings;
             _playerId = playerId;
             if (string.IsNullOrEmpty(_playerId))
@@ -71,8 +74,7 @@ namespace UG
 
             // Initialize UnityMainThreadDispatcher
             UnityMainThreadDispatcher.Initialize();
-            UGLog.SetLogLevel(sdkSettings.logLevel);
-
+            
             // Create audio streamer (MonoBehavior)
             GameObject ugAudioStreamerObject = new("UGSDKAudioStreamer");
             _audioStreamer = ugAudioStreamerObject.AddComponent<AudioStreamer>();

@@ -49,6 +49,7 @@ namespace UG
         private string _accessToken = null;
         private List<byte> _audioResponseDebugData = new List<byte>();
         private bool _isTextComplete = false;
+        private bool _isCompletionRequested = false;
         #endregion
 
         public ConversationManager(
@@ -80,13 +81,23 @@ namespace UG
             _audioStreamer.OnPlaybackTimeUpdate += StreamerPlaybackTimeUpdate;
             _audioStreamer.OnPlaybackComplete += async () =>
             {
-                UGLog.Log("Audio playbackcomplete; conv state: " + _currentState);
+                UGLog.Log("Audio playbackcomplete; conv state: " + _currentState + "isCompletionRequested: " + _isCompletionRequested);
                 if (!IsConversationRunning)
                 {
                     return;
                 }
                 // SetState(ConversationState.PlayingComplete);
                 OnConversationEvent?.Invoke(new ConversationEvent(ConversationEventType.PlayingAudioComplete, componentId: "v3"));
+
+                // Check if graceful completion was requested
+                if (_isCompletionRequested)
+                {
+                    await Task.Delay(300);
+                    _isCompletionRequested = false;
+                    StopConversation();
+                    OnConversationEvent?.Invoke(new ConversationEvent(ConversationEventType.Stopped));
+                    return;
+                }
 
                 if (!_conversationSettings.IsAllowInterrupts)
                 {
@@ -668,7 +679,9 @@ namespace UG
 
         public void StopConversation()
         {
+            UGLog.Log("Stopping conversation");
             _currentVoiceCaptureMaxSilentRetry = 0;
+            _isCompletionRequested = false;
             PauseConversation();
             Task.Run(async () =>
             {
@@ -678,11 +691,32 @@ namespace UG
             SetState(ConversationState.Idle);
         }
 
+        /// <summary>
+        /// Gracefully complete the conversation - waits for audio playback to finish,
+        /// adds 300ms buffer, then stops without starting user audio recording.
+        /// </summary>
+        public void SetConversationComplete()
+        {
+            UGLog.Log("Setting conversation complete");
+            if (!IsConversationRunning)
+            {
+                return;
+            }
+
+            _isCompletionRequested = true;
+
+            // Stop voice recording immediately - we don't want to continue recording
+            StopAndClearVoiceRecording();
+
+            // Completion will happen in OnPlaybackComplete when audio finishes
+        }
+
         public void ClearConversation()
         {
             SetState(ConversationState.Idle);
 
             _currentVoiceCaptureMaxSilentRetry = 0;
+            _isCompletionRequested = false;
 
             // Cancel all pending tasks
             _cancellationTokenSource?.Cancel();

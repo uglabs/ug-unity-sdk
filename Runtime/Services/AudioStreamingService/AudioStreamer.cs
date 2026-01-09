@@ -15,6 +15,7 @@ namespace UG.Services.AudioStreamingService
         private const int BufferSize = 256; // Buffer size in samples
         private const int SampleRate = 44100; // Sample rate
         private const float MinDataToPlayKb = 16; // Wait for 16Kb of data
+        private float _audioOutputLatency = 0.200f; // Time to wait after samples are read before signaling complete
         #endregion
 
 
@@ -31,6 +32,7 @@ namespace UG.Services.AudioStreamingService
         private int _firstSampleValue = -1;
         private bool _isAllSamplesPlayed = false;
         private bool _isPlayingSamples;
+        private double _samplesReadFinishedTime = -1;
         private float _totalPlaybackTime = 0f;
         private bool _isStreaming = false;
         private float playbackTime = 0f;
@@ -41,6 +43,8 @@ namespace UG.Services.AudioStreamingService
         private int _bufferingLevel = 1;
         private AudioOutputBenchmark _audioOutputBenchmark;
         public AudioOutputBenchmark AudioOutputBenchmark => _audioOutputBenchmark;
+        private bool _initialBufferedChunksDecoded = false;
+        private int _lastDecodedChunkIndex = 0;
 
         #region Actions
         public Action<float> OnPlaybackTimeUpdate; // Playback time in seconds
@@ -153,9 +157,32 @@ namespace UG.Services.AudioStreamingService
                 return;
             }
 
-            bool isStartingPlayback = !_isStreaming && !_isPlayingSamples;
-
-            float[] newSamples = DecodeChunk(chunk);
+            // Decode chunks - on first playback, decode all buffered chunks that haven't been decoded yet
+            // This fixes audio cutoff at the beginning when chunks were buffered but not decoded
+            float[] newSamples;
+            int chunksToDecodeFrom = _lastDecodedChunkIndex;
+            int chunksToDecodeTo = _completeChunks.Count;
+            
+            if (!_initialBufferedChunksDecoded && chunksToDecodeTo > chunksToDecodeFrom)
+            {
+                // First time decoding - decode all buffered chunks at once
+                var chunksToProcess = _completeChunks.Skip(chunksToDecodeFrom).Take(chunksToDecodeTo - chunksToDecodeFrom).ToList();
+                byte[] allChunks = CombineChunks(chunksToProcess);
+                newSamples = DecodeChunk(allChunks);
+                _lastDecodedChunkIndex = chunksToDecodeTo;
+                _initialBufferedChunksDecoded = true;
+                UGLog.Log($"[AudioStreamer] Starting playback - decoded {chunksToProcess.Count} buffered chunks ({allChunks.Length} bytes)");
+            }
+            else if (chunk != null && chunk.Length > 0)
+            {
+                // Subsequent chunks - decode only the new chunk
+                newSamples = DecodeChunk(chunk);
+                _lastDecodedChunkIndex = _completeChunks.Count;
+            }
+            else
+            {
+                newSamples = new float[0];
+            }
 
             // Combine new samples with existing samples
             if (_samplesData == null || _samplesData.Length == 0)
@@ -322,7 +349,15 @@ namespace UG.Services.AudioStreamingService
                 {
                     // Once we added all of the samples available - we can start checking for _isAllSamplesPlayed
                     int totalDataLength = _samplesData.Length + _totalEmptySamplesCount;
-                    _isAllSamplesPlayed = _dataReadPointer >= _samplesData.Length - 128;
+                    bool allSamplesRead = _dataReadPointer >= _samplesData.Length - 128;
+                    
+                    // Record time when reading finished, then wait for audio output latency
+                    if (allSamplesRead && _samplesReadFinishedTime < 0)
+                    {
+                        _samplesReadFinishedTime = AudioSettings.dspTime;
+                    }
+                    _isAllSamplesPlayed = _samplesReadFinishedTime > 0 && 
+                                          AudioSettings.dspTime >= _samplesReadFinishedTime + _audioOutputLatency;
                 }
             }
 
@@ -381,6 +416,15 @@ namespace UG.Services.AudioStreamingService
         }
         public bool IsEndOfStream() => _isEndOfStream;
 
+        /// <summary>
+        /// Sets the audio output latency (in seconds) to wait after samples are read before signaling playback complete.
+        /// Default is 0.5 seconds. Increase if audio is being cut off at the end.
+        /// </summary>
+        public void SetAudioOutputLatency(float latencySeconds)
+        {
+            _audioOutputLatency = latencySeconds;
+        }
+
         public void Flush()
         {
             if (_audioSource != null)
@@ -408,6 +452,9 @@ namespace UG.Services.AudioStreamingService
             _isPlayingSamples = false;
             _totalSamplesDataAdded = 0;
             _detectedSampleRate = 0;
+            _samplesReadFinishedTime = -1;
+            _initialBufferedChunksDecoded = false;
+            _lastDecodedChunkIndex = 0;
         }
 
 #if DEBUG_AUDIO

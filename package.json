@@ -1,7 +1,7 @@
 {
   "name": "io.uglabs.unity.sdk",
   "displayName": "UGSDK",
-  "version": "3.1.1",
+  "version": "3.1.2",
   "unity": "2022.3",
   "author": "UG Labs",
   "description": "UG SDK for developing Unity based projects and communicating with UG servers",
@@ -20,7 +20,7 @@
     },
     {
       "displayName": "Advanced - utilities",
-      "description": "Advanced example - use utilities to classify user input",
+      "description": "Advanced example - analyze user input and trigger actions based on results (e.g., auto-end conversation)",
       "path": "Runtime/Examples~/AdvancedUtilities"
     }
   ],

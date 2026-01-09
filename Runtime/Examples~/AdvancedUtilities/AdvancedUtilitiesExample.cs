@@ -38,12 +38,17 @@ public class UGSDKAdvancedUtilitiesExample : MonoBehaviour
                 {
                     ClassificationQuestion = "Did the user mention cats in the last message?", // Question to ask
                     Answers = new List<string> { "yes", "no" } // Available answers
+                },
+                ["finish_conversation"] = new UG.Models.Classify
+                {
+                    ClassificationQuestion = "Did the user express a desire to finish the conversation? Did the user say 'bye', 'goodbye', or 'end conversation'?",
+                    Answers = new List<string> { "yes", "no" }
                 }
             }
         });
 
         // Set which utilities to will run on user input
-        UGSDK.ConversationManager.SetOnInputUtilities(new List<string> { "cats" });
+        UGSDK.ConversationManager.SetOnInputUtilities(new List<string> { "cats", "finish_conversation" });
         // Set which utilities will run on assistant output
         // UGSDK.ConversationManager.SetOnOutputUtilities(null);
     }
@@ -58,6 +63,10 @@ public class UGSDKAdvancedUtilitiesExample : MonoBehaviour
                 break;
             case ConversationEventType.Error:
                 Debug.LogError("Error: " + (conversationEvent.Data as ErrorData).Message);
+                break;
+            case ConversationEventType.Stopped:
+                Debug.Log("Conversation stopped");
+                _recordingStateText.text = "Stopped";
                 break;
             case ConversationEventType.InteractionStarted:
                 Debug.Log("Interaction started");
@@ -90,10 +99,19 @@ public class UGSDKAdvancedUtilitiesExample : MonoBehaviour
                 break;
             // To get data from utilities, you need to subscribe to the ConversationEventType.DataReceived event
             case ConversationEventType.DataReceived:
+                // Get the result of the utility by name
                 var dataMessage = (conversationEvent.Data as DataReceivedData).Data;
                 dataMessage.TryGetValue("cats", out var cats);
                 Debug.Log("Data result received: " + cats);
                 _utilityClassifyResultText.text = "Classification result: " + cats;
+
+                // Check if the user wants to finish the conversation
+                dataMessage.TryGetValue("finish_conversation", out var finishConversation);
+                Debug.Log("Utility finish_conversation result: " + finishConversation);
+                if (finishConversation as string == "yes")
+                {
+                    UGSDK.ConversationManager.SetConversationComplete();
+                }
                 break;
             default:
                 break;
