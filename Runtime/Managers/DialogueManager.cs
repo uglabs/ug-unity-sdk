@@ -146,6 +146,7 @@ namespace UG
                             context: currentConfig.Context,
                             onInput: _onInputUtilities,
                             onOutput: _onOutputUtilities,
+                            languageCode: currentConfig.LanguageCode ?? "en",
                             audioOutput: true
                         );
 
@@ -427,6 +428,7 @@ namespace UG
                 context: conversationConfiguration.Context,
                 onInput: _onInputUtilities,
                 onOutput: _onOutputUtilities,
+                languageCode: conversationConfiguration.LanguageCode ?? "en",
                 audioOutput: true
             );
             UGLog.Log("Interact message: " + interactRequest.ToJson());

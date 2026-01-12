@@ -208,6 +208,7 @@ namespace UG
                 context: _conversationSettings.Context,
                 onInput: _conversationSettings.OnInputUtilities,
                 onOutput: _conversationSettings.OnOutputUtilities,
+                languageCode: _conversationSettings.LanguageCode ?? "en",
                 audioOutput: true
             );
             UGLog.Log("Interact message: " + interactRequest.ToJson());
@@ -380,6 +381,7 @@ namespace UG
                 context: _conversationSettings.Context,
                 onInput: _conversationSettings.OnInputUtilities,
                 onOutput: _conversationSettings.OnOutputUtilities,
+                languageCode: _conversationSettings.LanguageCode ?? "en",
                 audioOutput: true
             );
             UGLog.Log("Interact message: " + interactRequest.ToJson());
@@ -609,6 +611,7 @@ namespace UG
                 context: _conversationSettings.Context,
                 onInput: _conversationSettings.OnInputUtilities,
                 onOutput: _conversationSettings.OnOutputUtilities,
+                languageCode: _conversationSettings.LanguageCode ?? "en",
                 audioOutput: true
             );
             UGLog.Log("Interact message: " + interactRequest.ToJson());
@@ -809,6 +812,7 @@ namespace UG
                 context: _conversationSettings.Context,
                 onInput: _conversationSettings.OnInputUtilities,
                 onOutput: _conversationSettings.OnOutputUtilities,
+                languageCode: _conversationSettings.LanguageCode ?? "en",
                 audioOutput: isAudioOutput
             );
             UGLog.Log("Interact message: " + interactRequest.ToJson());

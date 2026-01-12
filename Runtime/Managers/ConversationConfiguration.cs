@@ -1,13 +1,34 @@
 using System.Collections.Generic;
+using System.Runtime.Serialization;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 
 namespace UG
 {
+    [JsonConverter(typeof(StringEnumConverter))]
+    public enum VoiceProvider
+    {
+        [EnumMember(Value = "elevenlabs")]
+        ElevenLabs,
+        
+        [EnumMember(Value = "deepdub")]
+        DeepDub
+    }
+    
     public class VoiceProfile
     {
+        // Provider selection - determines which TTS service handles the request
+        // If not set, binding order decides (ElevenLabs first by default)
+        [JsonProperty("provider")]
+        public VoiceProvider Provider { get; set; } = VoiceProvider.ElevenLabs;
+        
+        // Voice identifier - used by BOTH providers
+        // For ElevenLabs: the ElevenLabs voice ID
+        // For Deepdub: maps to the voice_prompt_id
         [JsonProperty("voice_id")]
         public string VoiceId { get; set; }
         
+        #region ElevenLabs-specific parameters
         [JsonProperty("speed")]
         public float Speed { get; set; }
         
@@ -16,6 +37,38 @@ namespace UG
         
         [JsonProperty("similarity_boost")]
         public float SimilarityBoost { get; set; }
+        
+        [JsonProperty("elevenlabs_model")]
+        public string ElevenlabsModel { get; set; }
+        #endregion
+        
+        #region Deepdub-specific parameters
+        [JsonProperty("deepdub_model")]
+        public string DeepDubModel { get; set; }
+        
+        [JsonProperty("deepdub_tempo")]
+        public float? DeepDubTempo { get; set; }
+        
+        [JsonProperty("deepdub_variance")]
+        public float? DeepDubVariance { get; set; }
+        
+        [JsonProperty("deepdub_locale")]
+        public string DeepDubLocale { get; set; }
+        
+        // Deepdub accent control (blend between base and target accents)
+        [JsonProperty("deepdub_accent_base_locale")]
+        public string DeepDubAccentBaseLocale { get; set; }
+        
+        [JsonProperty("deepdub_accent_locale")]
+        public string DeepDubAccentLocale { get; set; }
+        
+        [JsonProperty("deepdub_accent_ratio")]
+        public float? DeepDubAccentRatio { get; set; }
+        
+        // Deepdub audio post-processing
+        [JsonProperty("deepdub_clean_audio")]
+        public bool? DeepDubCleanAudio { get; set; }
+        #endregion
     }
 
     public class ConversationConfiguration
@@ -34,7 +87,7 @@ namespace UG
         #endregion
 
         #region Conversation settings
-         [JsonProperty("app_name")]
+        [JsonProperty("app_name")]
         public string AppName { get; set; }
         
         [JsonProperty("app_description")]
@@ -89,7 +142,11 @@ namespace UG
 
         public string ToJson()
         {
-            return JsonConvert.SerializeObject(this);
+            var settings = new JsonSerializerSettings
+            {
+                NullValueHandling = NullValueHandling.Ignore
+            };
+            return JsonConvert.SerializeObject(this, settings);
         }
 
         public static ConversationConfiguration FromJson(string json)

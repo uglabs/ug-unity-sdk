@@ -142,11 +142,11 @@ namespace UG.Models.WebSocketRequestMessages
         [JsonProperty("client_start_time")]
         public string ClientStartTime { get; set; }
 
-        JsonSerializerSettings settings = new JsonSerializerSettings
+        private static readonly JsonSerializerSettings _jsonSettings = new JsonSerializerSettings
         {
-            NullValueHandling = NullValueHandling.Ignore,
+            NullValueHandling = NullValueHandling.Ignore
         };
-        public string ToJson() => JsonConvert.SerializeObject(this, settings);
+        public string ToJson() => JsonConvert.SerializeObject(this, _jsonSettings);
     }
 
     public class InteractRequest : WebSocketRequestMessage
